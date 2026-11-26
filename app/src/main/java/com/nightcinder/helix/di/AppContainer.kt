@@ -14,9 +14,11 @@ import com.nightcinder.helix.auth.DataExpiredListener
 import com.nightcinder.helix.auth.DataStoreBiometricLockStore
 import com.nightcinder.helix.auth.EncryptedCookieJar
 import com.nightcinder.helix.auth.canDeviceAuthenticate
+import com.nightcinder.helix.auth.OutpostReauthInterceptor
 import com.nightcinder.helix.auth.TermixAuthInterceptor
 import com.nightcinder.helix.auth.TermixSessionStore
 import com.nightcinder.helix.auth.TinkCryptoStore
+import com.nightcinder.helix.auth.toHostOrSelf
 import com.nightcinder.helix.clipboard.AndroidClipboardAdapter
 import com.nightcinder.helix.clipboard.UnifiedClipboardBridge
 import com.nightcinder.helix.core.api.DockerApi
@@ -51,7 +53,6 @@ import com.nightcinder.helix.spotify.LocalSpotifyPlayer
 import com.nightcinder.helix.spotify.SpotifyAuthService
 import com.nightcinder.helix.spotify.SpotifyClientConfig
 import com.nightcinder.helix.spotify.SpotifyWebApi
-import com.nightcinder.helix.spatial.XrSessionController
 import com.nightcinder.helix.stream.DualPathMoonlightClient
 import com.nightcinder.helix.stream.MediaCodecVideoDecoder
 import com.nightcinder.helix.stream.MoonlightNativeBridge
@@ -67,6 +68,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -95,7 +97,6 @@ interface AppContainer {
     val clipboardBridge: ClipboardBridge
 
     // Phase 4 DI components
-    val xrSessionController: XrSessionController
     val urxrPresentationManager: UrxrPresentationManager
 
     // Monitoring DI component (Prometheus + Grafana + Diun)
@@ -157,9 +158,24 @@ class DefaultAppContainer(
         )
     }
 
-    private val okHttpClient by lazy {
+    private val outpostReauthInterceptor: OutpostReauthInterceptor by lazy {
+        OutpostReauthInterceptor(
+            protectedHosts = {
+                val cfg = sessionStore.config()
+                setOf(cfg.termixBaseUrl, cfg.moonlightBaseUrl).map { it.toHostOrSelf() }.filter { it.isNotBlank() }.toSet()
+            },
+            authentikHost = { sessionStore.config().authentikBaseUrl.toHostOrSelf() },
+            refreshOutposts = {
+                runBlocking { authentikPasskeyAuthManager.refreshOutpostCookies(force = true).isSuccess }
+            },
+        )
+    }
+
+    private val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .cookieJar(cookieJar)
+            // First, so a retried request goes back through the Termix auth interceptor below.
+            .addInterceptor(outpostReauthInterceptor)
             .addInterceptor(termixAuthInterceptor)
             // keep idle WebSockets (SSH tabs behind Cloudflare, ~100 s idle limit) alive
             .pingInterval(25, TimeUnit.SECONDS)
@@ -170,7 +186,7 @@ class DefaultAppContainer(
         CredentialManagerPasskeyRequester(activityProvider)
     }
 
-    private val authentikPasskeyAuthManager by lazy {
+    private val authentikPasskeyAuthManager: AuthentikPasskeyAuthManager by lazy {
         AuthentikPasskeyAuthManager(
             httpClient = okHttpClient,
             cookieJar = cookieJar,
@@ -305,9 +321,6 @@ class DefaultAppContainer(
     }
 
     // Phase 4 components wiring
-    override val xrSessionController: XrSessionController by lazy {
-        XrSessionController(backendDetector = displayBackendDetector)
-    }
 
     override val urxrPresentationManager: UrxrPresentationManager by lazy {
         UrxrPresentationManager(context = application, backendDetector = displayBackendDetector)

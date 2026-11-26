@@ -58,7 +58,8 @@ class AuthentikPasskeyAuthManager(
         .followRedirects(false)
         .followSslRedirects(false)
         .apply {
-            interceptors().removeAll { it is TermixAuthInterceptor }
+            // The shared client's OutpostReauthInterceptor would call back into this manager; keep it out.
+            interceptors().removeAll { it is TermixAuthInterceptor || it is OutpostReauthInterceptor }
             addInterceptor(TermixAuthInterceptor(session))
         }
         .build()

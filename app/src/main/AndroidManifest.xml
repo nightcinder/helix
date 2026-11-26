@@ -5,10 +5,6 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <uses-permission android:name="android.permission.SCENE_UNDERSTANDING_COARSE" />
-    <uses-permission android:name="android.permission.HAND_TRACKING" />
-    <uses-permission android:name="android.permission.HEAD_TRACKING" />
-
     <queries>
         <package android:name="com.spotify.music" />
         <package android:name="dev.spatialfin" />

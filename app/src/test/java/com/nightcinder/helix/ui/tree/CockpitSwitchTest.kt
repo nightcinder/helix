@@ -9,7 +9,6 @@ import com.nightcinder.helix.core.spatial.DisplayEnvironmentProbe
 import com.nightcinder.helix.core.spatial.ExternalDisplayDescriptor
 import com.nightcinder.helix.core.spatial.SpatialPanelId
 import com.nightcinder.helix.core.spatial.UsbDeviceDescriptor
-import com.nightcinder.helix.core.spatial.XrSessionLifecycleGate
 import com.nightcinder.helix.ui.FakeTerminalTransport
 import com.nightcinder.helix.ui.FakeWorkspaceTreeRepository
 import com.nightcinder.helix.ui.dashboard.DashboardDestination
@@ -19,6 +18,8 @@ import com.nightcinder.helix.ui.state.SpatialViewModel
 import com.nightcinder.helix.ui.state.StreamUiState
 import com.nightcinder.helix.ui.state.TerminalViewModel
 import com.nightcinder.helix.ui.state.TreeViewModel
+import com.nightcinder.helix.terminal.TerminalBufferRegistry
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -119,7 +120,7 @@ class CockpitSwitchTest {
     fun terminalTabsSyncWithoutTeardownAndTreeVisibilityDoesNotMutateSpatialViewModel() = runTest(testDispatcher) {
         val transport = FakeTerminalTransport()
         val workspaceRepo = FakeWorkspaceTreeRepository()
-        val terminalVm = TerminalViewModel(transport, workspaceRepo)
+        val terminalVm = TerminalViewModel(transport, workspaceRepo, TerminalBufferRegistry(CoroutineScope(testDispatcher)))
         val treeVm = TreeViewModel(workspaceRepo)
 
         val probe = object : DisplayEnvironmentProbe {
@@ -127,7 +128,7 @@ class CockpitSwitchTest {
             override fun connectedUsbDevices(): List<UsbDeviceDescriptor> = emptyList()
             override fun externalPresentationDisplays(): List<ExternalDisplayDescriptor> = emptyList()
         }
-        val spatialVm = SpatialViewModel(DisplayBackendDetector(probe), XrSessionLifecycleGate())
+        val spatialVm = SpatialViewModel(DisplayBackendDetector(probe))
 
         // Open SSH tab -> returns tabId and syncs into TreeViewModel without tearing down
         val tabId = terminalVm.openHostSshTab(desktop)

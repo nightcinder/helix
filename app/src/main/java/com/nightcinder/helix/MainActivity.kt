@@ -1,16 +1,13 @@
 package com.nightcinder.helix
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
@@ -53,14 +50,6 @@ class MainActivity : FragmentActivity() {
     private lateinit var treeViewModel: TreeViewModel
     private lateinit var spotifyViewModel: SpotifyViewModel
     private lateinit var mediaViewModel: MediaViewModel
-
-    private val requestXrPermissionsLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        val allGranted = results.values.all { it }
-        spatialViewModel.onXrPermissionsResult(allGranted)
-        appContainer.xrSessionController.onPermissionsResult(allGranted)
-    }
 
     /** True while the URXR glasses / external presentation trackpad deck is in use. */
     private fun isTrackpadDeckActive(): Boolean {
@@ -112,7 +101,6 @@ class MainActivity : FragmentActivity() {
 
         val spatialFactory = SpatialViewModel.provideFactory(
             displayBackendDetector = appContainer.displayBackendDetector,
-            lifecycleGate = appContainer.xrSessionController.gate,
         )
         spatialViewModel = ViewModelProvider(this, spatialFactory)[SpatialViewModel::class.java]
 
@@ -150,7 +138,6 @@ class MainActivity : FragmentActivity() {
         }
 
         handleOidcIntent(intent)
-        checkAndRequestXrPermissions()
 
         val initialPanelId = intent?.getStringExtra("helix_panel_id")
         val initialDestination = when (initialPanelId) {
@@ -250,14 +237,12 @@ class MainActivity : FragmentActivity() {
         (appContainer.activityProvider as? ActivityProvider)?.attachActivity(this)
         dashboardViewModel.detectDisplayBackend()
         spatialViewModel.detectDisplayBackend()
-        spatialViewModel.onLifecycleResumed(true)
-        appContainer.xrSessionController.onLifecycleChanged(true)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        spatialViewModel.onLifecycleResumed(false)
-        appContainer.xrSessionController.onLifecycleChanged(false)
+        // Back in the foreground (often the next day): renew the Authentik outpost cookies if they are older than
+        // the refresh interval, so the first Termix call does not have to bounce. With implicit-consent authorization
+        // on the proxy providers (docs/server-setup.md) this needs no passkey prompt.
+        if (appContainer.authManager.sessionState.value.isAuthenticated) {
+            lifecycleScope.launch { appContainer.authManager.refreshOutpostCookies(force = false) }
+        }
     }
 
     override fun onDestroy() {
@@ -293,26 +278,6 @@ class MainActivity : FragmentActivity() {
         // Termix OIDC callback intent filter: scheme="termix-mobile", host="oidc-callback"
         if (data.scheme == "termix-mobile" && data.host == "oidc-callback") {
             dashboardViewModel.onOidcCallbackUri(data.toString())
-        }
-    }
-
-    private fun checkAndRequestXrPermissions() {
-        val backend = appContainer.displayBackendDetector.detect()
-        if (backend is WorkspaceDisplayBackend.AndroidXrSpatial) {
-            val permissions = arrayOf(
-                "android.permission.SCENE_UNDERSTANDING_COARSE",
-                "android.permission.HAND_TRACKING",
-                "android.permission.HEAD_TRACKING",
-            )
-            val notGranted = permissions.filter {
-                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-            }
-            if (notGranted.isNotEmpty()) {
-                requestXrPermissionsLauncher.launch(notGranted.toTypedArray())
-            } else {
-                spatialViewModel.onXrPermissionsResult(true)
-                appContainer.xrSessionController.onPermissionsResult(true)
-            }
         }
     }
 
