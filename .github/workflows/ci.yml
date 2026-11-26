@@ -107,9 +107,11 @@ jobs:
 
   r8-release-check:
     name: R8 DEX Check
-    # Release build plus tool/check_release_apk.py. Runs only for release tags, like wmr-companion;
-    # the release job publishes this APK. Pull requests and pushes to main never run it.
-    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+    # Release build plus tool/check_release_apk.py. Runs only for release tags, like wmr-companion, and for a
+    # manual run on main; the release job publishes this APK. Pull requests and pushes never run it. It decodes
+    # the signing keystore on the shared liesa runner, so a dispatch from any other branch is refused here and a
+    # tag must point at a commit on main (checked below, before the keystore step).
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
     runs-on: [self-hosted, liesa, android]
     timeout-minutes: 30
     env:
@@ -117,6 +119,19 @@ jobs:
       ANDROID_CMAKE_VERSION: 3.22.1
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history for the main-ancestry check below.
+          fetch-depth: 0
+
+      - name: Refuse a tag that is not on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on origin/main; refusing to build with the release keystore."
+            exit 1
+          fi
 
       - name: Locate Android SDK & install pinned NDK/CMake
         run: |

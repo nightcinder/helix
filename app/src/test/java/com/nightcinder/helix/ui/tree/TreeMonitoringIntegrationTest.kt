@@ -20,6 +20,8 @@ import com.nightcinder.helix.ui.state.MonitoringViewModel
 import com.nightcinder.helix.ui.state.StreamViewModel
 import com.nightcinder.helix.ui.state.TerminalViewModel
 import com.nightcinder.helix.ui.state.TreeViewModel
+import com.nightcinder.helix.terminal.TerminalBufferRegistry
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -74,7 +76,7 @@ class TreeMonitoringIntegrationTest {
         )
         val transport = FakeTerminalTransport()
         val workspaceRepo = FakeWorkspaceTreeRepository()
-        val terminalVm = TerminalViewModel(transport, workspaceRepo)
+        val terminalVm = TerminalViewModel(transport, workspaceRepo, TerminalBufferRegistry(CoroutineScope(testDispatcher)))
         val treeVm = TreeViewModel(workspaceRepo)
         val streamVm = StreamViewModel(FakeMoonlightStreamClient(), FakeClipboardBridge())
         val controller = TreeController(treeVm, terminalVm, streamVm, dashboardVm)

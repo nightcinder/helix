@@ -8,8 +8,6 @@ import com.nightcinder.helix.core.spatial.SpatialMode
 import com.nightcinder.helix.core.spatial.SpatialPanelConfig
 import com.nightcinder.helix.core.spatial.SpatialPanelId
 import com.nightcinder.helix.core.spatial.WorkspaceDisplayBackend
-import com.nightcinder.helix.core.spatial.XrSessionGateState
-import com.nightcinder.helix.core.spatial.XrSessionLifecycleGate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,7 +17,6 @@ import kotlinx.coroutines.launch
 data class SpatialUiState(
     val displayBackend: WorkspaceDisplayBackend = WorkspaceDisplayBackend.Standard2D,
     val spatialMode: SpatialMode = SpatialMode.HOME_SPACE,
-    val xrGateState: XrSessionGateState = XrSessionGateState.UNAVAILABLE,
     val panels: Map<SpatialPanelId, SpatialPanelConfig> = defaultSpatialPanels(),
     val urxrPresentationActive: Boolean = false,
     val recenterEpochMs: Long = 0L,
@@ -37,8 +34,7 @@ data class SpatialUiState(
 
 /**
  * Default panel configuration. Only [SpatialPanelConfig.visible] is honoured by the Full Space layout today;
- * the offset/yaw values (including the positive Z offsets here, which differ in sign from
- * `XrSessionController.DEFAULT_PANELS`) are NOT used for placement yet.
+ * the offset/yaw values are NOT used for placement yet.
  */
 fun defaultSpatialPanels(): Map<SpatialPanelId, SpatialPanelConfig> = mapOf(
     SpatialPanelId.CENTER_DESKTOP to SpatialPanelConfig(
@@ -89,7 +85,6 @@ fun defaultSpatialPanels(): Map<SpatialPanelId, SpatialPanelConfig> = mapOf(
 
 class SpatialViewModel(
     private val displayBackendDetector: DisplayBackendDetector,
-    private val lifecycleGate: XrSessionLifecycleGate = XrSessionLifecycleGate(),
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SpatialUiState())
@@ -101,24 +96,7 @@ class SpatialViewModel(
 
     fun detectDisplayBackend() {
         val backend = displayBackendDetector.detect()
-        val isXr = backend is WorkspaceDisplayBackend.AndroidXrSpatial
-        lifecycleGate.onAvailabilityChanged(isXr)
-        _uiState.update {
-            it.copy(
-                displayBackend = backend,
-                xrGateState = lifecycleGate.currentState,
-            )
-        }
-    }
-
-    fun onLifecycleResumed(resumed: Boolean) {
-        lifecycleGate.onLifecycleChanged(resumed)
-        _uiState.update { it.copy(xrGateState = lifecycleGate.currentState) }
-    }
-
-    fun onXrPermissionsResult(granted: Boolean) {
-        lifecycleGate.onPermissionsChanged(granted)
-        _uiState.update { it.copy(xrGateState = lifecycleGate.currentState) }
+        _uiState.update { it.copy(displayBackend = backend) }
     }
 
     fun setHomeSpace() {
@@ -149,11 +127,10 @@ class SpatialViewModel(
     companion object {
         fun provideFactory(
             displayBackendDetector: DisplayBackendDetector,
-            lifecycleGate: XrSessionLifecycleGate = XrSessionLifecycleGate(),
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return SpatialViewModel(displayBackendDetector, lifecycleGate) as T
+                return SpatialViewModel(displayBackendDetector) as T
             }
         }
     }

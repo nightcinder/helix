@@ -7,8 +7,6 @@ import com.nightcinder.helix.core.spatial.SpatialMode
 import com.nightcinder.helix.core.spatial.SpatialPanelId
 import com.nightcinder.helix.core.spatial.UsbDeviceDescriptor
 import com.nightcinder.helix.core.spatial.WorkspaceDisplayBackend
-import com.nightcinder.helix.core.spatial.XrSessionGateState
-import com.nightcinder.helix.core.spatial.XrSessionLifecycleGate
 import com.nightcinder.helix.ui.state.SpatialViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,7 +48,6 @@ class SpatialViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var probe: FakeSpatialProbe
     private lateinit var detector: DisplayBackendDetector
-    private lateinit var gate: XrSessionLifecycleGate
     private lateinit var viewModel: SpatialViewModel
 
     @Before
@@ -58,8 +55,7 @@ class SpatialViewModelTest {
         Dispatchers.setMain(testDispatcher)
         probe = FakeSpatialProbe()
         detector = DisplayBackendDetector(probe)
-        gate = XrSessionLifecycleGate()
-        viewModel = SpatialViewModel(detector, gate)
+        viewModel = SpatialViewModel(detector)
     }
 
     @After
@@ -77,22 +73,12 @@ class SpatialViewModelTest {
     }
 
     @Test
-    fun detectAndroidXr_updatesBackendAndGate() = runTest {
+    fun detectAndroidXr_updatesBackend() = runTest {
         probe.xrPresent = true
         viewModel.detectDisplayBackend()
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.isAndroidXr)
-        assertEquals(XrSessionGateState.AWAITING_PERMISSIONS, viewModel.uiState.value.xrGateState)
-
-        viewModel.onXrPermissionsResult(true)
-        advanceUntilIdle()
-        assertEquals(XrSessionGateState.AWAITING_RESUMED, viewModel.uiState.value.xrGateState)
-
-        viewModel.onLifecycleResumed(true)
-        advanceUntilIdle()
-        assertEquals(XrSessionGateState.READY, viewModel.uiState.value.xrGateState)
-        assertTrue(gate.canCreateSession())
     }
 
     @Test

@@ -25,6 +25,8 @@ import com.nightcinder.helix.ui.state.SpecialTerminalKey
 import com.nightcinder.helix.ui.state.TerminalViewModel
 import com.nightcinder.helix.ui.state.WorkspaceDialog
 import com.nightcinder.helix.ui.state.WorkspaceViewModel
+import com.nightcinder.helix.terminal.TerminalBufferRegistry
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -209,7 +211,9 @@ class Phase2ViewModelsTest {
         Dispatchers.setMain(testDispatcher)
         transport = FakeTerminalTransport()
         workspaceRepo = FakeWorkspaceTreeRepository()
-        terminalViewModel = TerminalViewModel(transport, workspaceRepo)
+        // Own registry on the test dispatcher: the shared one publishes on Dispatchers.Default after a delay and
+        // would resume the view model on the real Main dispatcher once this test has reset it (leaked-coroutine flake).
+        terminalViewModel = TerminalViewModel(transport, workspaceRepo, TerminalBufferRegistry(CoroutineScope(testDispatcher)))
         workspaceViewModel = WorkspaceViewModel(workspaceRepo)
     }
 

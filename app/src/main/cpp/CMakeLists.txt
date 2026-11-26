@@ -17,8 +17,8 @@ set(DISABLE_PACKAGE_CONFIG_AND_INSTALL ON CACHE BOOL "Disable MbedTLS install ta
 FetchContent_Declare(
     mbedtls
     GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
-    GIT_TAG v3.6.2
-    GIT_SHALLOW TRUE
+    # v3.6.8 (LTS). Pinned by commit, like moonlight-common-c below; a commit can't be fetched shallow.
+    GIT_TAG 82e69999f91126589a28b70dd75b69fbcabe2711
     GIT_SUBMODULES ""
     PATCH_COMMAND ${CMAKE_COMMAND} -E touch framework/CMakeLists.txt
 )
