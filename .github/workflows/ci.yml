@@ -40,7 +40,7 @@ jobs:
       # writes the entry, so pull requests and tags never store another multi-GB copy.
       - name: Restore the Android NDK and CMake
         id: sdk-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             /usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
@@ -72,7 +72,7 @@ jobs:
 
       - name: Save the Android NDK and CMake
         if: ${{ github.ref == 'refs/heads/main' && steps.sdk-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             /usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
