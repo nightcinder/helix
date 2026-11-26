@@ -67,7 +67,9 @@ import com.nightcinder.helix.core.model.StreamTransportMode
 import com.nightcinder.helix.core.model.TermixHost
 import com.nightcinder.helix.ui.auth.AuthScreen
 import com.nightcinder.helix.ui.monitoring.AlertCountBadge
+import com.nightcinder.helix.ui.dashboard.MetricGaugeCard
 import com.nightcinder.helix.ui.monitoring.AlertsFeedPanel
+import com.nightcinder.helix.ui.resolveHostStatus
 import com.nightcinder.helix.ui.monitoring.PrometheusHostMetricsSection
 import com.nightcinder.helix.ui.snippets.SnippetsScreen
 import com.nightcinder.helix.ui.state.DashboardUiState
@@ -546,7 +548,7 @@ private fun MetricsTabContent(tab: ContentTab, env: TabEnv) {
             HostInfoCard(it, status = resolvedStatus)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricGauge(
+            MetricGaugeCard(
                 "CPU",
                 cpuPercent?.let { "${it.toInt()}%" } ?: "N/A",
                 metrics?.cpuCores?.let { "$it cores" } ?: "Load",
@@ -554,7 +556,7 @@ private fun MetricsTabContent(tab: ContentTab, env: TabEnv) {
                 CyanPrimary,
                 Modifier.weight(1f),
             )
-            MetricGauge(
+            MetricGaugeCard(
                 "Memory",
                 memoryPercent?.let { "${it.toInt()}%" } ?: "N/A",
                 memoryUsedBytes?.let { "${it / (1024 * 1024 * 1024)} GB" } ?: "RAM",
@@ -564,7 +566,7 @@ private fun MetricsTabContent(tab: ContentTab, env: TabEnv) {
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricGauge(
+            MetricGaugeCard(
                 "Disk",
                 diskPercent?.let { "${it.toInt()}%" } ?: "N/A",
                 diskUsedBytes?.let { "${it / (1024 * 1024 * 1024)} GB" } ?: "Storage",
@@ -572,7 +574,7 @@ private fun MetricsTabContent(tab: ContentTab, env: TabEnv) {
                 AmberAccent,
                 Modifier.weight(1f),
             )
-            MetricGauge(
+            MetricGaugeCard(
                 "Network",
                 netRxBytesPerSec?.let { "${it / 1024} KB/s" } ?: "0 KB/s",
                 netTxBytesPerSec?.let { "Tx: ${it / 1024} KB/s" } ?: "Rx / Tx",
@@ -658,34 +660,6 @@ private fun HostInfoCard(host: TermixHost, status: HostStatus = host.status) {
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun MetricGauge(
-    title: String,
-    value: String,
-    subtitle: String,
-    progress: Double,
-    accent: Color,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold), color = accent)
-            LinearProgressIndicator(
-                progress = { progress.coerceIn(0.0, 1.0).toFloat() },
-                modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
-                color = accent,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
-            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

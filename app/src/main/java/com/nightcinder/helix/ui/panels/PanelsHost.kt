@@ -216,6 +216,7 @@ fun HelixPanelsHost(
             dashboardViewModel = dashboardViewModel,
             dashboardUiState = dashboardUiState,
             modifier = m,
+            hostUpByKey = monitoringUiState.snapshot.hostUpByKey,
         )
     }
     val terminal: @Composable (Modifier) -> Unit = { m ->

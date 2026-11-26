@@ -3,10 +3,8 @@ package com.nightcinder.helix.ui.tree
 import com.nightcinder.helix.core.model.SiteConfig
 import com.nightcinder.helix.core.model.DockerContainer
 import com.nightcinder.helix.core.model.DockerStack
-import com.nightcinder.helix.core.model.HealthSummary
 import com.nightcinder.helix.core.model.HostStatus
 import com.nightcinder.helix.core.model.TermixHost
-import com.nightcinder.helix.monitoring.HostKeyMatcher
 
 /** A node of the connection tree: host > Docker stack > container. */
 sealed interface TreeNode {
@@ -139,34 +137,6 @@ enum class NodeAction(val label: String) {
     RESTART("Restart"),
     PULL("Pull images"),
     REFRESH("Refresh"),
-}
-
-/**
- * Resolves a host's effective status across Termix health checks, merged host status, and Prometheus/TCP
- * reachability (`hostUpByKey`), ensuring `HostHealthItem` entries with `UNKNOWN` status never mask
- * live Prometheus / WOL / TCP reachability results.
- */
-fun resolveHostStatus(
-    host: TermixHost,
-    health: HealthSummary?,
-    hostUpByKey: Map<String, Boolean> = emptyMap(),
-): HostStatus {
-    health?.hosts
-        ?.firstOrNull { it.hostId == host.id }
-        ?.resolvedStatus
-        ?.takeIf { it != HostStatus.UNKNOWN }
-        ?.let { return it }
-
-    val isUp = hostUpByKey[HostKeyMatcher.canonicalKeyForHost(host)]
-    if (isUp != null) {
-        if (host.status == HostStatus.UNKNOWN) {
-            return if (isUp) HostStatus.ONLINE else HostStatus.OFFLINE
-        }
-        if (host.status == HostStatus.OFFLINE && isUp) {
-            return HostStatus.ONLINE
-        }
-    }
-    return host.status
 }
 
 /** Streaming is offered on every host; the HELIX_STREAM_HOST_NAME host is the recommended (highlighted) one. */

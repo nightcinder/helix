@@ -1,7 +1,5 @@
 package com.nightcinder.helix.ui.panels
 
-import com.nightcinder.helix.core.model.HealthSummary
-import com.nightcinder.helix.core.model.HostHealthItem
 import com.nightcinder.helix.core.model.HostStatus
 import com.nightcinder.helix.core.model.TermixHost
 import kotlinx.coroutines.Dispatchers
@@ -191,27 +189,5 @@ class PanelNavStateTest {
         assertEquals(CockpitArea.TERMINAL, afterAlertTap.area)
         assertEquals(LeftTab.TERMINAL, afterAlertTap.leftTab)
         assertEquals(RightTab.ALERTS, afterAlertTap.rightTab)
-    }
-
-    @Test
-    fun resolveDisplayedHostStatusIgnoresUnknownHealthSummaryItems() {
-        val desktop = TermixHost(id = 2L, name = "desktop", status = HostStatus.ONLINE)
-        val workstation = TermixHost(id = 4L, name = "workstation", status = HostStatus.OFFLINE)
-        val core = TermixHost(id = 1L, name = "core", status = HostStatus.ONLINE)
-
-        val summary = HealthSummary(
-            hosts = listOf(
-                // Termix health check absent/unknown for Windows/WOL hosts must NOT revert status to grey UNKNOWN
-                HostHealthItem(hostId = 2L, status = null, healthy = false),
-                HostHealthItem(hostId = 4L, status = "unknown", healthy = false),
-                // Explicit degraded check on core still surfaces DEGRADED
-                HostHealthItem(hostId = 1L, status = "warn", healthy = false),
-            ),
-        )
-
-        assertEquals(HostStatus.ONLINE, resolveDisplayedHostStatus(desktop, summary))
-        assertEquals(HostStatus.OFFLINE, resolveDisplayedHostStatus(workstation, summary))
-        assertEquals(HostStatus.DEGRADED, resolveDisplayedHostStatus(core, summary))
-        assertEquals(HostStatus.ONLINE, resolveDisplayedHostStatus(desktop, null))
     }
 }

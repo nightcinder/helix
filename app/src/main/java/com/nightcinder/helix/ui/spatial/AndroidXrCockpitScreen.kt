@@ -212,6 +212,7 @@ fun AndroidXrCockpitScreen(
                             dashboardViewModel = dashboardViewModel,
                             dashboardUiState = dashboardUiState,
                             modifier = Modifier.weight(1f),
+                            hostUpByKey = monitoringUiState.snapshot.hostUpByKey,
                         )
                     }
 

@@ -99,6 +99,7 @@ import com.nightcinder.helix.core.spatial.WorkspaceDisplayBackend
 import com.nightcinder.helix.ui.auth.AuthScreen
 import com.nightcinder.helix.ui.monitoring.AlertCountBadge
 import com.nightcinder.helix.ui.monitoring.AlertsFeedPanel
+import com.nightcinder.helix.ui.resolveHostStatus
 import com.nightcinder.helix.ui.spatial.PixelTrackpadDeck
 import com.nightcinder.helix.ui.state.DashboardUiState
 import com.nightcinder.helix.ui.state.DashboardViewModel
