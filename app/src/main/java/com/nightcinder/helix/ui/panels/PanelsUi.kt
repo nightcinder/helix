@@ -66,7 +66,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.nightcinder.helix.core.model.HealthSummary
 import com.nightcinder.helix.core.model.StreamConnectionStatus
 import com.nightcinder.helix.core.model.StreamTransportMode
 import com.nightcinder.helix.core.model.TermixHost
@@ -77,6 +76,7 @@ import com.nightcinder.helix.ui.dashboard.WolStatusBanner
 import com.nightcinder.helix.ui.monitoring.AlertCountBadge
 import com.nightcinder.helix.ui.monitoring.AlertsFeedPanel
 import com.nightcinder.helix.ui.monitoring.PrometheusHostMetricsSection
+import com.nightcinder.helix.ui.resolveHostStatus
 import com.nightcinder.helix.ui.state.DashboardUiState
 import com.nightcinder.helix.ui.state.DashboardViewModel
 import com.nightcinder.helix.ui.state.MonitoringUiState
@@ -363,6 +363,7 @@ fun CenterPanel(
     dashboardViewModel: DashboardViewModel,
     dashboardUiState: DashboardUiState,
     modifier: Modifier = Modifier,
+    hostUpByKey: Map<String, Boolean> = emptyMap(),
 ) {
     val isActivelyStreaming = streamUiState.streamState.status == StreamConnectionStatus.Connected &&
         streamUiState.streamState.activeTransport != StreamTransportMode.EXTERNAL_NATIVE
@@ -375,6 +376,7 @@ fun CenterPanel(
                 selectedId = streamUiState.selectedHost?.id,
                 onSelect = { streamViewModel.selectHost(it) },
                 compact = true,
+                hostUpByKey = hostUpByKey,
             )
         }
         // Unconditional second slot keeps StreamScreen and its SurfaceView mounted across connects.
@@ -557,6 +559,7 @@ fun RightWingPanel(
                     workspaceViewModel = workspaceViewModel,
                     workspaceUiState = workspaceUiState,
                     onOpenDockerConsole = onOpenDockerConsole,
+                    monitoringUiState = monitoringUiState,
                 )
                 RightTab.ALERTS -> AlertsTab(
                     dashboardViewModel = dashboardViewModel,
@@ -577,18 +580,6 @@ fun RightWingPanel(
 }
 
 /**
- * Resolves displayed host status: prefers non-UNKNOWN [HealthSummary] status, falling back to [TermixHost.status]
- * (which carries Prometheus `up` / WOL / TCP probe resolution so hosts without a Termix status never stay grey).
- */
-internal fun resolveDisplayedHostStatus(
-    host: TermixHost,
-    healthSummary: HealthSummary?,
-): HostStatus {
-    val healthStatus = healthSummary?.hosts?.firstOrNull { it.hostId == host.id }?.resolvedStatus
-    return healthStatus?.takeIf { it != HostStatus.UNKNOWN } ?: host.status
-}
-
-/**
  * Shared host chip row: status dot, filter/search, CPU/RAM mini bars (unless [compact]) and a Wake-on-LAN
  * button on every chip. Also shows the WOL result banner. Used wherever hosts are listed.
  */
@@ -600,6 +591,7 @@ fun HostPicker(
     onSelect: (TermixHost) -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    hostUpByKey: Map<String, Boolean> = emptyMap(),
 ) {
     var query by remember { mutableStateOf("") }
     var searchOpen by remember { mutableStateOf(false) }
@@ -630,7 +622,7 @@ fun HostPicker(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 items(hosts, key = { it.id }) { host ->
-                    val status = resolveDisplayedHostStatus(host, dashboardUiState.healthSummary)
+                    val status = resolveHostStatus(host, dashboardUiState.healthSummary, hostUpByKey)
                     val dotColor = when (status) {
                         HostStatus.ONLINE -> EmeraldAccent
                         HostStatus.DEGRADED, HostStatus.SLEEPING -> AmberAccent
@@ -695,8 +687,8 @@ private fun MiniBar(percent: Double?, color: androidx.compose.ui.graphics.Color)
 
 /** Compact host detail (address, OS, status, profile notes) for the selected host. */
 @Composable
-private fun HostInfoCard(host: TermixHost, dashboardUiState: DashboardUiState) {
-    val status = resolveDisplayedHostStatus(host, dashboardUiState.healthSummary)
+private fun HostInfoCard(host: TermixHost, dashboardUiState: DashboardUiState, hostUpByKey: Map<String, Boolean>) {
+    val status = resolveHostStatus(host, dashboardUiState.healthSummary, hostUpByKey)
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(12.dp),
@@ -723,6 +715,7 @@ private fun WorkspaceTab(
     workspaceViewModel: WorkspaceViewModel,
     workspaceUiState: WorkspaceUiState,
     onOpenDockerConsole: (Long, String, String, String) -> Unit,
+    monitoringUiState: MonitoringUiState = MonitoringUiState(),
 ) {
     val hosts = dashboardUiState.hosts
     // ONE selected host (the dashboard's) drives Workspace, Metrics, snippets fallback and the tree.
@@ -739,6 +732,7 @@ private fun WorkspaceTab(
             dashboardUiState = dashboardUiState,
             selectedId = selectedId,
             onSelect = { dashboardViewModel.selectHost(it.id) },
+            hostUpByKey = monitoringUiState.snapshot.hostUpByKey,
         )
         WorkspaceTreeScreen(
             viewModel = workspaceViewModel,
@@ -770,6 +764,7 @@ private fun MetricsTab(
             dashboardUiState = dashboardUiState,
             selectedId = host?.id,
             onSelect = { dashboardViewModel.selectHost(it.id) },
+            hostUpByKey = monitoringUiState.snapshot.hostUpByKey,
         )
         if (host == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -805,7 +800,7 @@ private fun MetricsTab(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            HostInfoCard(host = host, dashboardUiState = dashboardUiState)
+            HostInfoCard(host = host, dashboardUiState = dashboardUiState, hostUpByKey = monitoringUiState.snapshot.hostUpByKey)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricGaugeCard(
                     title = "CPU",

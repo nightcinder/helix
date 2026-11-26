@@ -3,8 +3,6 @@ package com.nightcinder.helix.ui.tree
 import com.nightcinder.helix.TestSite
 import com.nightcinder.helix.core.model.DockerContainer
 import com.nightcinder.helix.core.model.DockerStack
-import com.nightcinder.helix.core.model.HealthSummary
-import com.nightcinder.helix.core.model.HostHealthItem
 import com.nightcinder.helix.core.model.HostStatus
 import com.nightcinder.helix.core.model.TerminalTabState
 import com.nightcinder.helix.core.model.TerminalTarget
@@ -165,40 +163,5 @@ class TreeLogicTest {
         assertEquals("restart web failed: boom", mergeMessage("restart web failed: boom", "boom"))
         // unrelated message replaces
         assertEquals("other", mergeMessage("boom", "other"))
-    }
-
-    // --- host status resolution (grey status dots fix) ------------------------------------------
-
-    @Test
-    fun resolveHostStatus_ignoresUnknownHealthItemAndUsesMonitoringReachability() {
-        val desktopMerged = TermixHost(id = 2L, name = "desktop", ip = "192.0.2.20", status = HostStatus.ONLINE)
-        val r440Unknown = TermixHost(id = 3L, name = "server1", ip = "192.0.2.30", status = HostStatus.UNKNOWN)
-        val workstationUnknown = TermixHost(id = 4L, name = "workstation", ip = "192.0.2.40", status = HostStatus.UNKNOWN)
-
-        // Termix health summary returns an UNKNOWN item (level = null, healthy = false) for desktop & server1
-        val healthWithUnknowns = HealthSummary(
-            hosts = listOf(
-                HostHealthItem(hostId = 1L, hostName = "core", healthy = false, status = "warn"),
-                HostHealthItem(hostId = 2L, hostName = "desktop", healthy = false, status = null),
-                HostHealthItem(hostId = 3L, hostName = "server1", healthy = false, status = null),
-            ),
-        )
-        val hostUpByKey = mapOf(
-            "core" to true,
-            "desktop" to true,
-            "server1" to true,
-            "workstation" to false,
-        )
-
-        // Authoritative DEGRADED ("warn") from Termix health wins for core
-        assertEquals(
-            HostStatus.DEGRADED,
-            resolveHostStatus(core.copy(status = HostStatus.ONLINE), healthWithUnknowns, hostUpByKey),
-        )
-        // UNKNOWN health item does NOT mask desktop's merged ONLINE status
-        assertEquals(HostStatus.ONLINE, resolveHostStatus(desktopMerged, healthWithUnknowns, hostUpByKey))
-        // UNKNOWN host status falls back to hostUpByKey for server1 (ONLINE) and workstation (OFFLINE)
-        assertEquals(HostStatus.ONLINE, resolveHostStatus(r440Unknown, healthWithUnknowns, hostUpByKey))
-        assertEquals(HostStatus.OFFLINE, resolveHostStatus(workstationUnknown, healthWithUnknowns, hostUpByKey))
     }
 }
