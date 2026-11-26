@@ -199,6 +199,9 @@ class NvHttp(
         OkHttpClient.Builder()
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
+            // GameStream (Sunshine/Vibepollo) speaks HTTP/1.1 only. Without this, OkHttp offers h2 over ALPN, and
+            // a server that accepts it can reset streams on the non-pooled client-auth connections.
+            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
             .build()
     }
 
