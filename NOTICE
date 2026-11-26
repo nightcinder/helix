@@ -1,0 +1,29 @@
+Helix
+Licensed under the GNU General Public License v3.0 (see LICENSE).
+
+Helix includes or is derived from the following third-party software.
+
+moonlight-common-c
+  https://github.com/moonlight-stream/moonlight-common-c
+  GNU General Public License v3.0. Fetched and built into libhelix_moonlight.so by
+  app/src/main/cpp/CMakeLists.txt.
+
+moonlight-android
+  https://github.com/moonlight-stream/moonlight-android
+  GNU General Public License v3.0. PairingManager.kt and KeyboardTranslator.kt are ports of its code.
+
+Mbed TLS
+  https://github.com/Mbed-TLS/mbedtls
+  Dual-licensed Apache-2.0 OR GPL-2.0-or-later; used here under the Apache License 2.0.
+  Fetched and built by app/src/main/cpp/CMakeLists.txt.
+
+AndroidX (Compose, Credentials, DataStore, Lifecycle, Media3, XR), Google Tink, OkHttp,
+Kotlin and kotlinx libraries
+  Apache License 2.0.
+
+Bouncy Castle
+  https://www.bouncycastle.org
+  MIT-style Bouncy Castle License.
+
+The Authentik patch in server/authentik-patch modifies a file of Authentik (https://goauthentik.io)
+at image build time; Authentik itself is not included and keeps its own license.

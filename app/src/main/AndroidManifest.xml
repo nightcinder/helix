@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <uses-permission android:name="android.permission.SCENE_UNDERSTANDING_COARSE" />
+    <uses-permission android:name="android.permission.HAND_TRACKING" />
+    <uses-permission android:name="android.permission.HEAD_TRACKING" />
+
+    <queries>
+        <package android:name="com.spotify.music" />
+        <package android:name="dev.spatialfin" />
+    </queries>
+
+    <uses-feature
+        android:name="android.software.xr.api.spatial"
+        android:required="false" />
+    <uses-feature
+        android:name="android.software.xr.api.openxr"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false" />
+
+    <application
+        android:name=".HelixApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ProjectHelix">
+
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
+            android:windowSoftInputMode="adjustResize">
+            <layout
+                android:defaultHeight="1000dp"
+                android:defaultWidth="1600dp"
+                android:minHeight="360dp"
+                android:minWidth="480dp" />
+            <property
+                android:name="android.window.PROPERTY_XR_ACTIVITY_START_MODE"
+                android:value="XR_ACTIVITY_START_MODE_HOME_SPACE_MANAGED" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="termix-mobile"
+                    android:host="oidc-callback" />
+            </intent-filter>
+        </activity>
+
+        <!-- Non-UI PKCE callback trampoline: consumes the URI, forwards to the singleTop MainActivity. -->
+        <activity
+            android:name=".spotify.SpotifyCallbackActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="com.nightcinder.helix"
+                    android:host="spotify-callback" />
+            </intent-filter>
+        </activity>
+
+        <!-- Grants MediaSessionManager access to Spotify's session once the user enables Notification access. -->
+        <service
+            android:name=".spotify.SpotifyNotificationListener"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <activity
+            android:name=".DetachedPanelActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
+            android:exported="false"
+            android:launchMode="standard"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
+            android:windowSoftInputMode="adjustResize">
+            <layout
+                android:defaultHeight="1000dp"
+                android:defaultWidth="1600dp"
+                android:minHeight="360dp"
+                android:minWidth="480dp" />
+            <property
+                android:name="android.window.PROPERTY_XR_ACTIVITY_START_MODE"
+                android:value="XR_ACTIVITY_START_MODE_HOME_SPACE_MANAGED" />
+        </activity>
+    </application>
+
+</manifest>

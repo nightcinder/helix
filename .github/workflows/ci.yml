@@ -1,0 +1,398 @@
+name: CI
+
+on:
+  # Manual run on main: builds the signed release APK on liesa for on-device testing, no tag.
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+    # Path filters are not evaluated for tag pushes, so a release tag always builds.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.github/dependabot.yml'
+      - '.github/workflows/security.yml'
+  # Every pull request builds: "Build, Unit Tests & Lint" is a required check in the branch ruleset, and a
+  # path-filtered workflow would leave docs-only PRs waiting on a check that never reports.
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-build-and-test:
+    name: Build, Unit Tests & Lint
+    # Always a GitHub-hosted runner, tags included: liesa runs only the R8 release build.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANDROID_NDK_VERSION: 28.2.13676358
+      ANDROID_CMAKE_VERSION: 3.22.1
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same idea as wmr-companion: every run restores the pinned NDK and CMake, only a push to main
+      # writes the entry, so pull requests and tags never store another multi-GB copy.
+      - name: Restore the Android NDK and CMake
+        id: sdk-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+            /usr/local/lib/android/sdk/cmake/${{ env.ANDROID_CMAKE_VERSION }}
+          key: android-ndk-${{ env.ANDROID_NDK_VERSION }}-cmake-${{ env.ANDROID_CMAKE_VERSION }}
+
+      - name: Locate Android SDK & install pinned NDK/CMake
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [ -z "$sdk" ] || [ ! -d "$sdk" ]; then
+            for candidate in "$HOME/Android/Sdk" /usr/local/lib/android/sdk /opt/android-sdk /opt/android/sdk; do
+              if [ -d "$candidate" ]; then sdk="$candidate"; break; fi
+            done
+          fi
+          test -d "$sdk"
+          echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk" >> "$GITHUB_ENV"
+
+          ndk="$sdk/ndk/$ANDROID_NDK_VERSION"
+          cmake="$sdk/cmake/$ANDROID_CMAKE_VERSION"
+          if [ ! -d "$ndk" ] || [ ! -d "$cmake" ]; then
+            sdkmanager="$(command -v sdkmanager || find "$sdk" -maxdepth 5 -type f -name sdkmanager | head -n 1)"
+            [ -d "$ndk" ] || yes | "$sdkmanager" --sdk_root="$sdk" "ndk;$ANDROID_NDK_VERSION" || true
+            [ -d "$cmake" ] || yes | "$sdkmanager" --sdk_root="$sdk" "cmake;$ANDROID_CMAKE_VERSION" || true
+          fi
+          test -d "$ndk"
+          test -d "$cmake"
+
+      - name: Save the Android NDK and CMake
+        if: ${{ github.ref == 'refs/heads/main' && steps.sdk-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+            /usr/local/lib/android/sdk/cmake/${{ env.ANDROID_CMAKE_VERSION }}
+          key: android-ndk-${{ env.ANDROID_NDK_VERSION }}-cmake-${{ env.ANDROID_CMAKE_VERSION }}
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Run unit tests, lint and the debug build
+        env:
+          # Public PKCE client id (not a secret); blank => app shows "Spotify not configured".
+          HELIX_SPOTIFY_CLIENT_ID: ${{ vars.HELIX_SPOTIFY_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: android-ci-outputs
+          path: |
+            app/build/reports/lint-results-debug.html
+            app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
+          retention-days: 14
+
+  r8-release-check:
+    name: R8 DEX Check
+    # Release build plus tool/check_release_apk.py. Runs only for release tags, like wmr-companion;
+    # the release job publishes this APK. Pull requests and pushes to main never run it.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+    runs-on: [self-hosted, liesa, android]
+    timeout-minutes: 30
+    env:
+      ANDROID_NDK_VERSION: 28.2.13676358
+      ANDROID_CMAKE_VERSION: 3.22.1
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Locate Android SDK & install pinned NDK/CMake
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [ -z "$sdk" ] || [ ! -d "$sdk" ]; then
+            for candidate in "$HOME/Android/Sdk" /usr/local/lib/android/sdk /opt/android-sdk /opt/android/sdk; do
+              if [ -d "$candidate" ]; then sdk="$candidate"; break; fi
+            done
+          fi
+          test -d "$sdk"
+          echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk" >> "$GITHUB_ENV"
+
+          ndk="$sdk/ndk/$ANDROID_NDK_VERSION"
+          cmake="$sdk/cmake/$ANDROID_CMAKE_VERSION"
+          if [ ! -d "$ndk" ] || [ ! -d "$cmake" ]; then
+            sdkmanager="$(command -v sdkmanager || find "$sdk" -maxdepth 5 -type f -name sdkmanager | head -n 1)"
+            [ -d "$ndk" ] || yes | "$sdkmanager" --sdk_root="$sdk" "ndk;$ANDROID_NDK_VERSION" || true
+            [ -d "$cmake" ] || yes | "$sdkmanager" --sdk_root="$sdk" "cmake;$ANDROID_CMAKE_VERSION" || true
+          fi
+          test -d "$ndk"
+          test -d "$cmake"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Decode release keystore (if configured)
+        env:
+          KEYSTORE_B64: ${{ secrets.HELIX_RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            ks_path="$RUNNER_TEMP/helix-release.jks"
+            printf '%s' "$KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > "$ks_path"
+            chmod 600 "$ks_path"
+            echo "HELIX_RELEASE_KEYSTORE_PATH=$ks_path" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build the release APK
+        env:
+          HELIX_RELEASE_STORE_PASSWORD: ${{ secrets.HELIX_RELEASE_STORE_PASSWORD }}
+          HELIX_RELEASE_KEY_PASSWORD: ${{ secrets.HELIX_RELEASE_KEY_PASSWORD }}
+          HELIX_RELEASE_KEY_ALIAS: ${{ secrets.HELIX_RELEASE_KEY_ALIAS }}
+          HELIX_SPOTIFY_CLIENT_ID: ${{ vars.HELIX_SPOTIFY_CLIENT_ID }}
+          # Deployment defaults (docs/configuration.md). Repository variables; unset => blank, set in the app.
+          # Unit tests above deliberately run without them.
+          HELIX_AUTHENTIK_URL: ${{ vars.HELIX_AUTHENTIK_URL }}
+          HELIX_TERMIX_URL: ${{ vars.HELIX_TERMIX_URL }}
+          HELIX_MOONLIGHT_URL: ${{ vars.HELIX_MOONLIGHT_URL }}
+          HELIX_PROMETHEUS_URL: ${{ vars.HELIX_PROMETHEUS_URL }}
+          HELIX_GRAFANA_URL: ${{ vars.HELIX_GRAFANA_URL }}
+          HELIX_JELLYFIN_URL: ${{ vars.HELIX_JELLYFIN_URL }}
+          HELIX_STREAM_HOST: ${{ vars.HELIX_STREAM_HOST }}
+          HELIX_STREAM_HOST_NAME: ${{ vars.HELIX_STREAM_HOST_NAME }}
+          HELIX_WOL_HOST: ${{ vars.HELIX_WOL_HOST }}
+          HELIX_WOL_MAC: ${{ vars.HELIX_WOL_MAC }}
+          HELIX_DIUN_HOST: ${{ vars.HELIX_DIUN_HOST }}
+          HELIX_HOST_ALIASES: ${{ vars.HELIX_HOST_ALIASES }}
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+          if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
+            echo "RELEASE_APK_PATH=app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_APK_PATH=app/build/outputs/apk/release/app-release-unsigned.apk" >> "$GITHUB_ENV"
+          fi
+
+      - name: Verify release APK R8 retention & native libs
+        run: python3 tool/check_release_apk.py "$RELEASE_APK_PATH"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: release-apk
+          path: ${{ env.RELEASE_APK_PATH }}
+          if-no-files-found: warn
+          retention-days: 14
+
+  release:
+    name: Publish release
+    # A `v*` tag whose commit is already on main publishes the APK that
+    # r8-release-check just built and verified; nothing is built twice.
+    # A `-dryrun` tag still runs the build jobs above but never publishes.
+    needs: [android-build-and-test, r8-release-check]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-dryrun') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      VERSION: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # The ancestry guard compares the tagged commit with origin/main; the
+      # default depth-1 checkout has no history to compare against.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Refuse a tag that is not on main
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $VERSION points at $GITHUB_SHA, which is not an ancestor of origin/main; refusing to publish a release."
+            exit 1
+          fi
+
+      - name: Download the verified release APK
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ci-outputs"
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name release-apk --dir "$RUNNER_TEMP/ci-outputs"
+          signed="$(find "$RUNNER_TEMP/ci-outputs" -name 'app-release.apk' | head -n 1)"
+          if [ -z "$signed" ]; then
+            echo "::error::no signed app-release.apk in the CI outputs (only an unsigned build?); refusing to publish. Check the HELIX_RELEASE_KEYSTORE_* secrets."
+            exit 1
+          fi
+          out="$RUNNER_TEMP/release-assets"
+          mkdir -p "$out"
+          cp "$signed" "$out/helix-${VERSION#v}.apk"
+          (cd "$out" && sha256sum ./*.apk | sed 's| \./| |' > SHA256SUMS)
+          cat "$out/SHA256SUMS"
+          echo "ASSET_DIR=$out" >> "$GITHUB_ENV"
+
+      - name: Create the GitHub release
+        run: |
+          set -euo pipefail
+          flags=(--verify-tag --generate-notes --title "$VERSION")
+          # A tag with a hyphen (v0.2.0-rc1) is a prerelease.
+          case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" "${flags[@]}" \
+            "$ASSET_DIR/helix-${VERSION#v}.apk" "$ASSET_DIR/SHA256SUMS"
+          gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'
+
+  release-mobsf:
+    name: MobSF & Native Library Inventory
+    # Static analysis of the APK that actually went out, plus a diff of its
+    # native libraries against the previous release. Report-only: the release
+    # is already published when this runs, so a finding informs but never blocks.
+    # MobSF is a separate Portainer stack (mobsf-apk-scanner) on this host,
+    # joined to the runner's docker network, so the job reaches it by name.
+    needs: [release]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-dryrun') && needs.release.result == 'success' }}
+    runs-on: [self-hosted, liesa, android]
+    timeout-minutes: 30
+    permissions:
+      # Attaching native-libs.json to the release makes it the next baseline.
+      contents: write
+    env:
+      VERSION: ${{ github.ref_name }}
+      MOBSF_URL: http://mobsf:8000
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # The previous tag is found by walking history; a depth-1 checkout has none.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Preflight the self-hosted runner
+        run: |
+          set -euo pipefail
+          missing=()
+          for tool in curl python3 gh; do
+            command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::missing on the self-hosted runner: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Download the published APK
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/mobsf"
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --pattern "helix-${VERSION#v}.apk" --dir "$RUNNER_TEMP/mobsf" --clobber
+          ls -l "$RUNNER_TEMP/mobsf"
+
+      # The baseline is the previous release's own inventory, not a file in the
+      # repository: it has to describe what shipped, and it cannot go stale.
+      - name: Fetch the previous release's inventory
+        id: baseline
+        run: |
+          set -euo pipefail
+          previous="$(git describe --tags --abbrev=0 --match 'v*' --exclude '*-dryrun' "${VERSION}^" 2>/dev/null || true)"
+          echo "tag=$previous" >> "$GITHUB_OUTPUT"
+          if [ -z "$previous" ]; then
+            echo "no previous version tag reachable; this release establishes the baseline"
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/mobsf/baseline"
+          # Check the asset list first: `gh release download` fails the same way
+          # for a missing asset and for an API outage, and treating an outage as
+          # "no baseline" would silently re-baseline and hide a diff.
+          assets="$RUNNER_TEMP/mobsf/baseline-assets.txt"
+          err="$RUNNER_TEMP/mobsf/baseline.err"
+          if gh release view "$previous" --repo "$GITHUB_REPOSITORY" \
+              --json assets --jq '.assets[].name' > "$assets" 2> "$err"; then
+            :
+          elif grep -qi 'release not found' "$err"; then
+            echo "::warning::$previous has no published release; this release establishes the baseline"
+            exit 0
+          else
+            cat "$err"
+            echo "::error::could not read the assets of $previous"
+            exit 1
+          fi
+          if ! grep -qx 'native-libs.json' "$assets"; then
+            echo "::warning::$previous carries no native-libs.json; this release establishes the baseline"
+            exit 0
+          fi
+          gh release download "$previous" --repo "$GITHUB_REPOSITORY" \
+            --pattern native-libs.json --dir "$RUNNER_TEMP/mobsf/baseline" --clobber
+          mv "$RUNNER_TEMP/mobsf/baseline/native-libs.json" "$RUNNER_TEMP/mobsf/baseline.json"
+          echo "baseline from $previous"
+
+      - name: Inventory and scan
+        # The key goes in the environment, not argv: this runner is persistent
+        # and shared, and the process list is readable by every local user.
+        env:
+          MOBSF_API_KEY: ${{ secrets.MOBSF_API_KEY }}
+        run: |
+          set -euo pipefail
+          args=(
+            --apk "$RUNNER_TEMP/mobsf/helix-${VERSION#v}.apk"
+            --out-dir "$RUNNER_TEMP/mobsf"
+            --tag "$VERSION"
+            --url "$MOBSF_URL"
+          )
+          if [ -f "$RUNNER_TEMP/mobsf/baseline.json" ]; then
+            args+=(
+              --baseline "$RUNNER_TEMP/mobsf/baseline.json"
+              --baseline-tag "${{ steps.baseline.outputs.tag }}"
+            )
+          fi
+          if [ -n "$MOBSF_API_KEY" ]; then
+            python3 tool/mobsf_scan.py "${args[@]}"
+          else
+            # The inventory needs no service. Losing it because the scanner is
+            # not configured yet would leave the next release with no baseline.
+            echo "::warning::MOBSF_API_KEY is not set; recorded the inventory without a scan."
+            python3 tool/mobsf_scan.py "${args[@]}" --skip-scan
+          fi
+
+      - name: Upload the reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobsf-${{ github.ref_name }}
+          path: |
+            ${{ runner.temp }}/mobsf/native-libs.json
+            ${{ runner.temp }}/mobsf/native-libs-diff.md
+            ${{ runner.temp }}/mobsf/mobsf-report.json
+            ${{ runner.temp }}/mobsf/mobsf-report.pdf
+          if-no-files-found: warn
+          retention-days: 90
+
+      # The inventory is written before the scan, so it is a valid baseline even
+      # when the scan itself failed: a MobSF outage must not cost the next
+      # release its diff.
+      - name: Attach the inventory to the release
+        if: always()
+        run: |
+          set -euo pipefail
+          inventory="$RUNNER_TEMP/mobsf/native-libs.json"
+          if [ ! -f "$inventory" ]; then
+            echo "no inventory was produced; nothing to attach"
+            exit 0
+          fi
+          gh release upload "$VERSION" "$inventory" --repo "$GITHUB_REPOSITORY" --clobber

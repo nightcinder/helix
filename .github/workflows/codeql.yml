@@ -1,0 +1,72 @@
+name: codeql
+
+on:
+  # Same split as ci.yml and security.yml: branch pushes stay on `main`, so a PR gets one
+  # `pull_request` run rather than a second push run beside it.
+  push:
+    branches: [main]
+  pull_request:
+  # The query packs move under us; a weekly full scan catches what a diff-only run does not
+  # re-examine.
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: codeql (${{ matrix.language }})
+    # Code scanning needs GitHub Advanced Security on a private repo, so this only runs on the
+    # public mirror (nightcinder/helix). The private repo keeps the same file unchanged.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # Job-level permissions replace the workflow-level set, so every scope the job needs is
+      # listed here.
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      # One slow language must not cancel the others.
+      fail-fast: false
+      matrix:
+        include:
+          # Kotlin needs a real compile for CodeQL to see it. `compileDebugKotlin` builds the
+          # app's Kotlin and Java without the CMake/NDK native build (the Moonlight core is
+          # third-party C fetched at build time, so c-cpp is deliberately not analysed).
+          - language: java-kotlin
+            build-mode: manual
+          - language: python
+            build-mode: none
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v7
+      - if: matrix.build-mode == 'manual'
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - if: matrix.build-mode == 'manual'
+        uses: gradle/actions/setup-gradle@v6
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+      - name: Build Kotlin
+        if: matrix.build-mode == 'manual'
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --no-build-cache :app:compileDebugKotlin
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
